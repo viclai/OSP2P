@@ -16,8 +16,8 @@ run: osppeer
 	@-/bin/rm -rf test
 	@echo + mkdir test
 	@mkdir test
-	@echo + ./osppeer -dtest -t11111 cat1.jpg cat2.jpg cat3.jpg
-	@./osppeer -dtest -t11111 cat1.jpg cat2.jpg cat3.jpg
+	@echo + ./osppeer -dtest -t12997 cat1.jpg cat2.jpg cat3.jpg
+	@./osppeer -dtest -t12997 cat1.jpg cat2.jpg cat3.jpg
 
 run-good: osppeer
 	@-/bin/rm -rf test
@@ -37,8 +37,8 @@ run-bad: osppeer
 	@-/bin/rm -rf test
 	@echo + mkdir test
 	@mkdir test
-	@echo + ./osppeer -dtest -t11114 cat1.jpg cat2.jpg cat3.jpg
-	@./osppeer -dtest -t11114 cat1.jpg cat2.jpg cat3.jpg
+	@echo + ./osppeer -dtest -t12995 cat1.jpg cat2.jpg cat3.jpg
+	@./osppeer -dtest -t12995 cat1.jpg cat2.jpg cat3.jpg
 
 run-popular: osppeer
 	@-/bin/rm -rf test

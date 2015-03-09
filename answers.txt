@@ -28,9 +28,26 @@ We used the system call fork() to download and upload files in parallel.
 
 # EXERCISE 2A: What conditions did you find and fix that would have
 #    triggered a buffer overrun bug?  (~1-3 sentences each)
+We found the main buffer overrun bugs in the places that used the function 
+call strcpy. In the function start_download, we checked to see that the length 
+of the file name does not exceed the maximum file name size in order to check 
+for a possible buffer overflow. Likewise, we checked the length of the file 
+name in the function task_upload. 
 
 # EXERCISE 2B: What other robustness problems did you fix?  (~1-3 sentences
 #    each)
+We increased the maximum task buffer size (TASKBUFSIZ) so that when the 
+popular tracker is used (from executing make run-popular), larger aliases will 
+be able to be accomodated. Increasing it by a factor of 8 allowed us to 
+download files from the popular tracker. 
+
+We also checked for the permissions of the files that the user requests. We 
+did so by checking that the files requested are indeed in the current 
+directory (since those in other directories cannot be served). We especially 
+verified that files whose names begin with a slash are not served. 
+
+We ensured that malicious users do not stream large quantities of data by 
+setting a maximum file size. We set it to 2 megabytes. 
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)

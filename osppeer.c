@@ -36,8 +36,10 @@ static int listen_port;
  * a bounded buffer that simplifies reading from and writing to peers.
  */
 
-#define TASKBUFSIZ	4096	// Size of task_t::buf
+#define TASKBUFSIZ	32768	// Size of task_t::buf
+				// 32768 = 4096 * 8 
 #define FILENAMESIZ	256	// Size of task_t::filename
+#define MAXFILESIZ	2097152 // 2*1024*1024
 
 typedef enum tasktype {		// Which type of connection is this?
 	TASK_TRACKER,		// => Tracker connection
@@ -477,7 +479,15 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 		error("* Error while allocating task");
 		goto exit;
 	}
-	strcpy(t->filename, filename);
+
+	message("** File name is '%s'\n", filename);
+
+	if (strlen(filename) > FILENAMESIZ - 1) {
+		error("Buffer overflow avoided!\n");
+		goto exit;
+	}
+	else
+		strcpy(t->filename, filename);
 
 	// add peers
 	s1 = tracker_task->buf;
@@ -533,9 +543,14 @@ static void task_download(task_t *t, task_t *tracker_task)
 	// "foo.txt~1~".  However, if there are 50 local files, don't download
 	// at all.
 	for (i = 0; i < 50; i++) {
-		if (i == 0)
-			strcpy(t->disk_filename, t->filename);
-		else
+		if (i == 0) {
+			if (strlen(t->filename) > FILENAMESIZ - 1) {
+				error("Buffer overflow avoided!\n");
+				goto try_again;
+			}
+			else 
+				strcpy(t->disk_filename, t->filename);
+		} else
 			sprintf(t->disk_filename, "%s~%d~", t->filename, i);
 		t->disk_fd = open(t->disk_filename,
 				  O_WRONLY | O_CREAT | O_EXCL, 0666);
@@ -566,6 +581,12 @@ static void task_download(task_t *t, task_t *tracker_task)
 			break;
 
 		ret = write_from_taskbuf(t->disk_fd, t);
+
+		if (t->total_written > MAXFILESIZ) {
+                        error("* File reached size limit");
+                        goto try_again;
+                }
+
 		if (ret == TBUF_ERROR) {
 			error("* Disk write error");
 			goto try_again;
@@ -616,6 +637,7 @@ static task_t *task_listen(task_t *listen_task)
 	else if (fd == -1)
 		die("accept");
 
+	sleep(1);
 	message("* Got connection from %s:%d\n",
 		inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
 
@@ -644,11 +666,28 @@ static void task_upload(task_t *t)
 	}
 
 	assert(t->head == 0);
+	if (t->tail > FILENAMESIZ + 12) {
+		error("Buffer overflow avoided!\n");
+		goto exit;
+	}
 	if (osp2p_snscanf(t->buf, t->tail, "GET %s OSP2P\n", t->filename) < 0) {
 		error("* Odd request %.*s\n", t->tail, t->buf);
 		goto exit;
 	}
 	t->head = t->tail = 0;
+
+	if (strlen(t->filename) > FILENAMESIZ - 1) {
+		error("Buffer overflow avoided!\n");
+		goto exit;
+	}
+	if (t->filename[0] == '/') {
+		error("Attempting to access absolute path!\n");
+		goto exit;
+	}
+	char* ret;
+	ret = strrchr(t->filename, '/');
+	if (ret != NULL)
+		strcpy(t->filename, ret + 1);
 
 	t->disk_fd = open(t->filename, O_RDONLY);
 	if (t->disk_fd == -1) {
@@ -768,11 +807,13 @@ int main(int argc, char *argv[])
 				error("* Error in forking a new process\n");
 
 			else if (downloadPid == 0) { // Child 
+				message("** START downloading: '%s'\n", argv[1]);
 				task_download(t, tracker_task);
+				message("** DONE downloading: '%s'\n", argv[1]);
 				_exit(0);
 
 			} else // Parent 
-				waitpid(downloadPid, NULL, WNOHANG);
+				waitpid(-1, NULL, WNOHANG);
 		}
 
 	// Then accept connections from other peers and upload files to them!
@@ -781,12 +822,14 @@ int main(int argc, char *argv[])
 		if (uploadPid < 0) // Error forking 
 			error("* Error in forking a new process\n");
 
-		else if (downloadPid == 0) { // Child 
+		else if (uploadPid == 0) { // Child 
+			message("** START uploading\n");
 			task_upload(t);
+			message("** DONE uploading\n");
 			_exit(0);
 
 		} else // Parent 
-			waitpid(uploadPid, NULL, WNOHANG);
+			waitpid(-1, NULL, WNOHANG);
 
 	}
 
