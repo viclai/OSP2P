@@ -51,6 +51,16 @@ setting a maximum file size. We set it to 2 megabytes.
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)
+We implemented an uploader attack. When the user request a file, we instead do 
+one of two things, depending on what file the user wants. If the user wants 
+a file whose name contains cat, we open /dev/urandom. If the the user specifies 
+ any other file, we open /dev/zero. These attacks will be successful if the 
+file permission is not checked. 
+
+We also implemented a downloader attack. When the user requests to download a 
+file, we instead ask to download a file with a very long name. If the code is 
+not written robustly, then there will be a buffer overflow, resulting in a 
+segmentation fault. 
 
 # Extra credit problems
 #Extra credit problem: none
