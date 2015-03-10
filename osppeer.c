@@ -680,14 +680,33 @@ static void task_upload(task_t *t)
 		error("Buffer overflow avoided!\n");
 		goto exit;
 	}
-	if (t->filename[0] == '/') {
-		error("Attempting to access absolute path!\n");
+	
+	message("** File name is '%s'\n", t->filename);
+
+	/* Check if t->filename is in the current directory. */
+	char filePath[PATH_MAX];
+	char cwd[PATH_MAX];
+	getcwd(cwd, PATH_MAX);
+	if (t->filename[0] == '~') {
+		char* home = getenv("HOME");
+		char homePath[PATH_MAX];
+		strcpy(homePath, home);
+		if (!realpath(strcat(homePath, t->filename + 1), filePath)) {
+			error("** Error in resolving pathname");
+			goto exit;
+		}
+	} else {
+		if (realpath(t->filename, filePath) == NULL) {
+			error("** Error in resolving pathname");
+			goto exit;
+		}
+	}
+
+	// Check that cwd matches filePath
+	if (strncmp(cwd, filePath, strlen(cwd)) != 0) {
+		error("** %s is not in the current directory\n");
 		goto exit;
 	}
-	char* ret;
-	ret = strrchr(t->filename, '/');
-	if (ret != NULL)
-		strcpy(t->filename, ret + 1);
 
 	t->disk_fd = open(t->filename, O_RDONLY);
 	if (t->disk_fd == -1) {
@@ -803,8 +822,10 @@ int main(int argc, char *argv[])
 	for (; argc > 1; argc--, argv++)
 		if ((t = start_download(tracker_task, argv[1]))) {
 			downloadPid = fork();
-			if (downloadPid < 0) // Error forking 
+			if (downloadPid < 0) { // Error forking 
 				error("* Error in forking a new process\n");
+				_exit(1);
+			}
 
 			else if (downloadPid == 0) { // Child 
 				message("** START downloading: '%s'\n", argv[1]);
@@ -813,14 +834,16 @@ int main(int argc, char *argv[])
 				_exit(0);
 
 			} else // Parent 
-				waitpid(-1, NULL, WNOHANG);
+				task_free(t);
 		}
 
 	// Then accept connections from other peers and upload files to them!
 	while ((t = task_listen(listen_task))) {
 		uploadPid = fork();
-		if (uploadPid < 0) // Error forking 
+		if (uploadPid < 0) { // Error forking 
 			error("* Error in forking a new process\n");
+			_exit(1);
+		}
 
 		else if (uploadPid == 0) { // Child 
 			message("** START uploading\n");
@@ -829,8 +852,7 @@ int main(int argc, char *argv[])
 			_exit(0);
 
 		} else // Parent 
-			waitpid(-1, NULL, WNOHANG);
-
+			task_free(t);
 	}
 
 	return 0;
