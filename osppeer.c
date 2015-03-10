@@ -36,7 +36,7 @@ static int listen_port;
  * a bounded buffer that simplifies reading from and writing to peers.
  */
 
-#define TASKBUFSIZ	32768	// Size of task_t::buf
+#define TASKBUFSIZ	4096000	// Size of task_t::buf
 				// 32768 = 4096 * 8 
 #define FILENAMESIZ	256	// Size of task_t::filename
 #define MAXFILESIZ	2097152 // 2*1024*1024
@@ -680,6 +680,7 @@ static void task_upload(task_t *t)
 		error("Buffer overflow avoided!\n");
 		goto exit;
 	}
+	/*
 	if (t->filename[0] == '/') {
 		error("Attempting to access absolute path!\n");
 		goto exit;
@@ -687,12 +688,52 @@ static void task_upload(task_t *t)
 	char* ret;
 	ret = strrchr(t->filename, '/');
 	if (ret != NULL)
-		strcpy(t->filename, ret + 1);
+		strcpy(t->filename, ret + 1);*/
 
-	t->disk_fd = open(t->filename, O_RDONLY);
-	if (t->disk_fd == -1) {
-		error("* Cannot open file %s", t->filename);
+	/* Check if t->filename is in the current directory */
+	char path[PATH_MAX]; //PATH_MAX = 4096
+	char cwd[PATH_MAX];
+	// Obtain the current working directory in cwd
+	getcwd(cwd, PATH_MAX);
+	// Resolve the filename into an absolute path
+	if (t->filename[0] == '~') // File from home directory
+	{
+		char* home = getenv("HOME");
+        	char s[PATH_MAX];
+        	realpath(strcat(strcpy(s, home), t->filename+1), path);
+		strcpy(t->filename, path);
+   	}
+	else
+	{
+		if (realpath(t->filename, path) == NULL)
+		{
+			error("* %s path is invalid", t->filename);
+			goto exit;
+		}
+	}
+	// Check that path matches cwd
+	if (strncmp(cwd, path, strlen(cwd)) != 0)
+	{
+		error("* %s is not in the current directory", t->filename);
 		goto exit;
+	}
+	
+	// ATTACK
+	if (evil_mode != 0) 
+	{
+		t->disk_fd = open(t->filename, O_RDONLY);
+		if (t->disk_fd == -1) {
+			error("* Cannot open file %s", t->filename);
+			goto exit;
+		}
+	}
+	else
+	{
+		t->disk_fd = open(t->filename, O_RDONLY);
+		if (t->disk_fd == -1) {
+			error("* Cannot open file %s", t->filename);
+			goto exit;
+		}
 	}
 
 	message("* Transferring file %s\n", t->filename);
@@ -810,10 +851,12 @@ int main(int argc, char *argv[])
 				message("** START downloading: '%s'\n", argv[1]);
 				task_download(t, tracker_task);
 				message("** DONE downloading: '%s'\n", argv[1]);
-				_exit(0);
+				exit(0);
 
-			} else // Parent 
-				waitpid(-1, NULL, WNOHANG);
+			} else // Parent
+			{	
+				task_free(t);//waitpid(-1, NULL, WNOHANG);
+			}
 		}
 
 	// Then accept connections from other peers and upload files to them!
@@ -826,12 +869,16 @@ int main(int argc, char *argv[])
 			message("** START uploading\n");
 			task_upload(t);
 			message("** DONE uploading\n");
-			_exit(0);
+			exit(0);
 
 		} else // Parent 
-			waitpid(-1, NULL, WNOHANG);
+		{
+			task_free(t);//waitpid(-1, NULL, WNOHANG);
+		}
 
 	}
 
 	return 0;
 }
+
+
