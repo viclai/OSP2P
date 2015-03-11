@@ -55,7 +55,8 @@ We implemented an uploader attack. When the user request a file, we instead do
 one of two things, depending on what file the user wants. If the user wants 
 a file whose name contains cat, we open /dev/urandom. If the the user specifies 
  any other file, we open /dev/zero. These attacks will be successful if the 
-file permission is not checked. 
+file permission is not checked. They can possibly cause the disk to run out of 
+space to write data. 
 
 We also implemented a downloader attack. When the user requests to download a 
 file, we instead ask to download a file with a very long name. If the code is 
@@ -63,6 +64,9 @@ not written robustly, then there will be a buffer overflow, resulting in a
 segmentation fault. 
 
 # Extra credit problems
-#Extra credit problem: none
+#Extra credit problem: File Integrity (MD5 checksum)
+Please examine the code implemented in the function task_download for details. 
 
 # Add any other information you'd like us to know below this line.
+To run downloads/uploads with the MD5 checksum, set the defined variable MD5SUM
+ to 1, at the top of osppeer.c. 

@@ -42,6 +42,8 @@ static int listen_port;
 #define MAXFILESIZ	2097152 // 2*1024*1024
 #define OVERFLOW	"EGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERTEGGERT"
 
+#define MD5SUM		0	// Set this to 1 to get an MD5 checksum
+
 typedef enum tasktype {		// Which type of connection is this?
 	TASK_TRACKER,		// => Tracker connection
 	TASK_PEER_LISTEN,	// => Listens for upload requests
@@ -511,7 +513,6 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 	// add peers
 	s1 = tracker_task->buf;
 	while ((s2 = memchr(s1, '\n', (tracker_task->buf + messagepos) - s1))) {
-		message("s1: %s", s1);
 		if (!(p = parse_peer(s1, s2 - s1)))
 			die("osptracker responded to WANT command with unexpected format!\n");
 		p->next = t->peer_list;
@@ -594,6 +595,8 @@ static void task_download(task_t *t, task_t *tracker_task)
 		return;
 	}
 
+	md5_state_t mst;
+	md5_init(&mst);
 	// Read the file into the task buffer from the peer,
 	// and write it from the task buffer onto disk.
 	while (1) {
@@ -605,9 +608,22 @@ static void task_download(task_t *t, task_t *tracker_task)
 			/* End of file */
 			break;
 
+		/* MD5 checksum computation */
+		unsigned headpos = (t->head % TASKBUFSIZ);
+		unsigned tailpos = (t->tail % TASKBUFSIZ);
+		ssize_t amt;
+
+		if (t->head == t->tail)
+			amt = 0;
+		else if (headpos < tailpos)
+			amt = tailpos - headpos;
+		else
+			amt = TASKBUFSIZ - headpos;
+		if (amt != 0)
+			md5_append(&mst, (md5_byte_t*)(&t->buf[headpos]), amt);
+
 		ret = write_from_taskbuf(t->disk_fd, t);
 
-		message("** Checking total bytes written\n");
 		if (t->total_written > MAXFILESIZ) {
                         error("* File reached size limit");
                         goto try_again;
@@ -618,6 +634,31 @@ static void task_download(task_t *t, task_t *tracker_task)
 			goto try_again;
 		}
 	}
+
+	/* Continuing computation of MD5 checksum */
+	ssize_t msgPos;
+	osp2p_writef(tracker_task->peer_fd, "MD5SUM %s\n", t->filename);
+	msgPos = read_tracker_response(tracker_task);
+	if (tracker_task->buf[msgPos] != '2' && MD5SUM) {
+		error("** Unable to get MD5SUM\n");
+		goto try_again;
+	}
+	tracker_task->buf[msgPos - 1] = '\0';
+	if (MD5SUM)
+		message("** MD5: %s\n", tracker_task->buf);
+	char* checksum = (char*) malloc(msgPos * sizeof(char));
+	strncpy(checksum, tracker_task->buf, msgPos);
+
+	char* digest = (char*) malloc(MD5_TEXT_DIGEST_SIZE);
+	int digestLen = md5_finish_text(&mst, digest, 1);
+	if (MD5SUM)
+		message("** Checksum: %s, Digest: %s\n", checksum, digest);
+	if (MD5SUM && strncmp(checksum, digest, msgPos) != 0) {
+		error("** MD5 checksum does not match. File likely corrupted\n"
+			);
+		goto try_again;
+	} else if (MD5SUM)
+		message("** MD5 checksum matches\n");
 
 	// Empty files are usually a symptom of some error.
 	if (t->total_written > 0) {
