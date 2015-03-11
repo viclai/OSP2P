@@ -416,7 +416,7 @@ static void register_files(task_t *tracker_task, const char *myalias)
 	if (evil_mode) {
 		char* files[] = { "cat1.jpg", "cat2.jpg", "cat3.jpg" };
 		int i;
-		for (i = 1; i < 3; i = i + 1) {
+		for (i = 0; i < 3; i = i + 1) {
 			osp2p_writef(tracker_task->peer_fd, "HAVE %s\n", 
 				files[i]);
 			messagepos = read_tracker_response(tracker_task);
@@ -511,6 +511,7 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 	// add peers
 	s1 = tracker_task->buf;
 	while ((s2 = memchr(s1, '\n', (tracker_task->buf + messagepos) - s1))) {
+		message("s1: %s", s1);
 		if (!(p = parse_peer(s1, s2 - s1)))
 			die("osptracker responded to WANT command with unexpected format!\n");
 		p->next = t->peer_list;
@@ -557,7 +558,7 @@ static void task_download(task_t *t, task_t *tracker_task)
 	}
 
 	if (evil_mode) {
-		message("Initiating download of big file...\n");
+		message("Initiating download of file with long name...\n");
 		osp2p_writef(t->peer_fd, "GET %s OSP2P\n", OVERFLOW);
 	} else
 		osp2p_writef(t->peer_fd, "GET %s OSP2P\n", t->filename);
@@ -737,7 +738,7 @@ static void task_upload(task_t *t)
 	}
 
 	// Check that cwd matches filePath
-	if (strncmp(cwd, filePath, strlen(cwd)) != 0) {
+	if (!evil_mode && strncmp(cwd, filePath, strlen(cwd)) != 0) {
 		error("** %s is not in the current directory\n");
 		goto exit;
 	}
@@ -850,7 +851,7 @@ int main(int argc, char *argv[])
 	if (evil_mode) {
 		message("** Preparing to be evil...Bwhaha!\n");
 		myalias = (const char*) malloc(40);
-		sprintf((char*) myalias, "Evil Eggert");
+		sprintf((char*) myalias, "Evil_Eggert");
 	}
 
 	// Connect to the tracker and register our files.
