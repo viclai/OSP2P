@@ -608,7 +608,8 @@ static void task_download(task_t *t, task_t *tracker_task)
 			/* End of file */
 			break;
 
-		/* MD5 checksum computation */
+		/* Append string to the message for every block that is 
+ 		   read in. */
 		unsigned headpos = (t->head % TASKBUFSIZ);
 		unsigned tailpos = (t->tail % TASKBUFSIZ);
 		ssize_t amt;
@@ -635,7 +636,7 @@ static void task_download(task_t *t, task_t *tracker_task)
 		}
 	}
 
-	/* Continuing computation of MD5 checksum */
+	/* Generate MD5 checksum */
 	ssize_t msgPos;
 	osp2p_writef(tracker_task->peer_fd, "MD5SUM %s\n", t->filename);
 	msgPos = read_tracker_response(tracker_task);

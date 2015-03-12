@@ -64,8 +64,14 @@ not written robustly, then there will be a buffer overflow, resulting in a
 segmentation fault. 
 
 # Extra credit problems
-#Extra credit problem: File Integrity (MD5 checksum)
-Please examine the code implemented in the function task_download for details. 
+Extra credit problem: File Integrity (MD5 checksum)
+Please examine the code implemented in the function task_download for more 
+details. 
+
+In summary, we call md5_append for each block that we read in from the 
+function read_to_taskbuf in the while-loop. That function call appended it to 
+the md5 that we declared and initialized. Afterwards, we call md5_finish_text 
+to generate the MD5 checksum. 
 
 # Add any other information you'd like us to know below this line.
 To run downloads/uploads with the MD5 checksum, set the defined variable MD5SUM
