@@ -1,6 +1,6 @@
 # Synopsis
 
-OSP2P is a course-related project assigned in an upper-division operating systems <a href="http://www.registrar.ucla.edu/schedule/subdet.aspx?srs=187336200&term=15W&session=" target="_blank" title="COM SCI 111">class</a> at UCLA. A peer-to-peer (P2P) interaction is implemented that enables connected nodes on the network to perform both the roles of client and server, downloading files.
+OSP2P is a course-related project assigned in an upper-division operating systems <a href="http://web.cs.ucla.edu/classes/winter15/cs111/" target="_blank" title="COM SCI 111">class</a> at UCLA. A peer-to-peer (P2P) interaction is implemented that enables connected nodes on the network to perform both the roles of client and server, downloading files.
 
 # Development
 
